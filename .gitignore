@@ -1,0 +1,35 @@
+# ── Données sensibles : NE JAMAIS COMMITER ─────────────────────
+transactions.json
+transactions_*.json
+*.csv
+*.tsv
+secrets.*
+.env
+.env.*
+
+# ── Fichiers Python (si tu copies des scripts ici) ──────────────
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# ── Système ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# ── Éditeurs ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-*
+
+# ── Logs ────────────────────────────────────────────────────────
+*.log
+
+# ── Backups ─────────────────────────────────────────────────────
+*.bak
+*.backup
+*.orig
+.claude/
