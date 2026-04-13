@@ -1638,8 +1638,8 @@ body::after {
   .budget-input { width: 68px; }
 
   /* ── Drawer tx-item ── */
-  .tx-item { grid-template-columns: 22px 1fr auto; gap: 8px; padding: 10px 14px; }
-  .tx-date { display: none; }
+  .tx-item { grid-template-columns: 22px auto 1fr auto; gap: 6px; padding: 10px 14px; }
+  .tx-date { display: block; font-size: 9px; color: var(--text-3); }
   .tx-carte { display: none; }
   .tx-marchand { font-size: 13px; }
   .tx-amount { font-size: 13px; }
@@ -3285,7 +3285,9 @@ function aggregateTransactions(transactions) {
 /* ════════════════════════════════════════════════════════════════
    API LOADING
 ════════════════════════════════════════════════════════════════ */
-const API_URL = 'http://localhost:8080/api/data';
+const API_URL  = 'http://localhost:8080/api/data';
+const API_BASE = API_URL.replace(/\/api\/data$/, '');
+const SYNC_IDS_KEY = 'financescale_synced_ids_v1';
 
 function setLoadingUI(isLoading) {
   const overlay = $('loading-overlay');
@@ -3379,9 +3381,19 @@ async function loadData() {
   }
 
   if (json && json.transactions) {
-    const txs = json.transactions;
+    // Déduplication par tx.id — empêche les doublons après sync répété
+    const seen = new Set();
+    const txs = json.transactions.filter(tx => {
+      if (!tx.id || seen.has(tx.id)) return false;
+      seen.add(tx.id);
+      return true;
+    });
+
     txs.forEach(tx => { if (CAT_OVERRIDES[tx.id]) tx.categorie = CAT_OVERRIDES[tx.id]; });
     RAW_TXS = txs;
+
+    // Sauvegarder les IDs connus pour la prochaine sync
+    try { localStorage.setItem(SYNC_IDS_KEY, JSON.stringify([...seen])); } catch(e) {}
 
     const rows = aggregateTransactions(txs);
     if (rows.length > 0) {
@@ -3426,42 +3438,59 @@ renderAccounts();
 $('refresh-btn').addEventListener('click', loadData);
 $('err-retry-btn').addEventListener('click', loadData);
 
-// Sync Gmail — shared function, works from sidebar or mobile
+// Sync Gmail — shared function, works from sidebar, mobile, or FAB
 async function triggerSync(triggerEl) {
-  // Disable all sync buttons during sync
   const syncBtns = [$('sync-btn'), $('mob-sync-btn'), $('mob-nav-sync'), $('fab-sync')];
-  syncBtns.forEach(b => { if (b) b.disabled = true; });
-  if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync en cours…';
-  if ($('mob-sync-btn')) $('mob-sync-btn').classList.add('syncing');
-  if ($('fab-sync')) $('fab-sync').classList.add('syncing');
-  try {
-    const res = await fetch('http://localhost:8080/api/sync', { method: 'POST' });
-    const json = await res.json();
-    if (json.status === 'started') {
-      const poll = setInterval(async () => {
-        const s = await fetch('http://localhost:8080/api/sync/status').then(r => r.json());
-        if (!s.running) {
-          clearInterval(poll);
-          syncBtns.forEach(b => { if (b) b.disabled = false; });
-          if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync Gmail';
-          if ($('mob-sync-btn')) $('mob-sync-btn').classList.remove('syncing');
-          if ($('fab-sync')) $('fab-sync').classList.remove('syncing');
-          if (s.last_result === 'success') loadData();
-          else setBadge('error');
-        }
-      }, 2000);
-    } else {
-      syncBtns.forEach(b => { if (b) b.disabled = false; });
-      if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync Gmail';
-      if ($('mob-sync-btn')) $('mob-sync-btn').classList.remove('syncing');
-      if ($('fab-sync')) $('fab-sync').classList.remove('syncing');
-    }
-  } catch {
+  const resetUI = () => {
     syncBtns.forEach(b => { if (b) b.disabled = false; });
     if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync Gmail';
     if ($('mob-sync-btn')) $('mob-sync-btn').classList.remove('syncing');
     if ($('fab-sync')) $('fab-sync').classList.remove('syncing');
-    showError('Serveur API indisponible');
+  };
+
+  // Activer l'état "en cours"
+  syncBtns.forEach(b => { if (b) b.disabled = true; });
+  if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync en cours…';
+  if ($('mob-sync-btn')) $('mob-sync-btn').classList.add('syncing');
+  if ($('fab-sync')) $('fab-sync').classList.add('syncing');
+
+  // Récupérer les IDs déjà connus pour éviter les doublons côté serveur
+  let knownIds = [];
+  try { const r = localStorage.getItem(SYNC_IDS_KEY); if (r) knownIds = JSON.parse(r); } catch(e) {}
+
+  try {
+    const res = await fetch(API_BASE + '/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ known_ids: knownIds }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const json = await res.json();
+
+    if (json.status === 'started') {
+      const poll = setInterval(async () => {
+        try {
+          const s = await fetch(API_BASE + '/api/sync/status', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
+          if (!s.running) {
+            clearInterval(poll);
+            resetUI();
+            if (s.last_result === 'success') loadData();
+            else setBadge('error');
+          }
+        } catch {
+          clearInterval(poll);
+          resetUI();
+          // Polling échoué — recharger les données quand même
+          loadData();
+        }
+      }, 2000);
+    } else {
+      resetUI();
+    }
+  } catch {
+    resetUI();
+    // API indisponible — fallback : recharger les données depuis le fichier chiffré
+    await loadData();
   }
 }
 
