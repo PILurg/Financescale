@@ -1643,6 +1643,43 @@ body::after {
   .tx-carte { display: none; }
   .tx-marchand { font-size: 13px; }
   .tx-amount { font-size: 13px; }
+
+  /* ── FAB sync: above mobile nav ── */
+  .fab-sync { bottom: calc(var(--mob-nav) + 18px); right: 18px; width: 52px; height: 52px; font-size: 22px; }
+}
+
+/* ── Floating Action Button – Sync Email ────────────────────── */
+.fab-sync {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid rgba(167,139,250,.4);
+  background: rgba(167,139,250,.12);
+  color: var(--violet);
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 300;
+  box-shadow: 0 4px 20px rgba(0,0,0,.35), 0 0 0 0 rgba(167,139,250,0);
+  transition: background .18s, border-color .18s, box-shadow .18s, transform .18s;
+  -webkit-tap-highlight-color: transparent;
+}
+.fab-sync:hover {
+  background: rgba(167,139,250,.22);
+  border-color: rgba(167,139,250,.6);
+  transform: scale(1.07);
+  box-shadow: 0 6px 28px rgba(0,0,0,.45), 0 0 12px rgba(167,139,250,.25);
+}
+.fab-sync:active { transform: scale(.95); }
+.fab-sync.syncing {
+  animation: spin .75s linear infinite;
+  pointer-events: none;
+  opacity: .7;
 }
 </style>
 </head>
@@ -1960,6 +1997,9 @@ body::after {
   </div>
 
 </main>
+
+<!-- ─── Floating Sync Email button ───────────────────────────── -->
+<button class="fab-sync" id="fab-sync" title="Sync emails bancaires">✉</button>
 
 <!-- ─── Mobile bottom nav (hidden on desktop) ────────────────── -->
 <nav id="mobile-nav">
@@ -3389,10 +3429,11 @@ $('err-retry-btn').addEventListener('click', loadData);
 // Sync Gmail — shared function, works from sidebar or mobile
 async function triggerSync(triggerEl) {
   // Disable all sync buttons during sync
-  const syncBtns = [$('sync-btn'), $('mob-sync-btn'), $('mob-nav-sync')];
+  const syncBtns = [$('sync-btn'), $('mob-sync-btn'), $('mob-nav-sync'), $('fab-sync')];
   syncBtns.forEach(b => { if (b) b.disabled = true; });
   if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync en cours…';
   if ($('mob-sync-btn')) $('mob-sync-btn').classList.add('syncing');
+  if ($('fab-sync')) $('fab-sync').classList.add('syncing');
   try {
     const res = await fetch('http://localhost:8080/api/sync', { method: 'POST' });
     const json = await res.json();
@@ -3404,6 +3445,7 @@ async function triggerSync(triggerEl) {
           syncBtns.forEach(b => { if (b) b.disabled = false; });
           if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync Gmail';
           if ($('mob-sync-btn')) $('mob-sync-btn').classList.remove('syncing');
+          if ($('fab-sync')) $('fab-sync').classList.remove('syncing');
           if (s.last_result === 'success') loadData();
           else setBadge('error');
         }
@@ -3412,16 +3454,19 @@ async function triggerSync(triggerEl) {
       syncBtns.forEach(b => { if (b) b.disabled = false; });
       if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync Gmail';
       if ($('mob-sync-btn')) $('mob-sync-btn').classList.remove('syncing');
+      if ($('fab-sync')) $('fab-sync').classList.remove('syncing');
     }
   } catch {
     syncBtns.forEach(b => { if (b) b.disabled = false; });
     if ($('sync-btn')) $('sync-btn').textContent = '✉ Sync Gmail';
     if ($('mob-sync-btn')) $('mob-sync-btn').classList.remove('syncing');
+    if ($('fab-sync')) $('fab-sync').classList.remove('syncing');
     showError('Serveur API indisponible');
   }
 }
 
 $('sync-btn').addEventListener('click', () => triggerSync($('sync-btn')));
+$('fab-sync').addEventListener('click', () => triggerSync($('fab-sync')));
 
 loadData();
 </script>
